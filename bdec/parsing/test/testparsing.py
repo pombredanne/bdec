@@ -51,6 +51,9 @@ class TestParsing(unittest.TestCase):
             // ignore me too
             run''')))
 
+    def test_ignore_cpp_comments(self):
+        command = '/*' + SkipTo('*/')
+
     def test_or(self):
         a = Word(alphas) | Word(nums)
         self.assertEqual(['1234'], list(a.parseString('1234')))
@@ -103,3 +106,10 @@ class TestParsing(unittest.TestCase):
     def test_action_returns_object(self):
         a = Word('abcd').addParseAction(lambda t:t[0].upper())
         self.assertEqual(['BAD'], list(a.parseString('bad')))
+
+    def test_access_results_by_name(self):
+        a = Word(alphas)('name') + Suppress('=') + Word(nums).setParseAction(lambda t:int(t[0]))('value')
+        result = a.parseString('rabbit = 5')
+        self.assertEqual('rabbit', result.name)
+        self.assertEqual(5, result.value)
+

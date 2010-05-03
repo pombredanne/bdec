@@ -14,6 +14,24 @@ class ChoiceDecoder(EntryDecoder):
             self._chooser = chsr.Chooser([child.decoder.entry for child in self.children])
         # Convert the list of entries to a list of children.
         possibles = []
+#        items = list(self._chooser.choose(data))
+#        if len(items) > 1:
+#            print 'failed to choose: options are', items
+#            from bdec.spec.xmlspec import dumps
+#            found = set()
+#            common = []
+#            def recurse(entry):
+#                if entry in found:
+#                    common.append(entry)
+#                    return
+#                found.add(entry)
+#                for child in entry.children:
+#                    recurse(child.entry)
+#            for e in items:
+#                recurse(e)
+#            print 'blah blah'
+#            for item in items:
+#                print dumps(item, common)
         for entry in self._chooser.choose(data):
             for child in self.children:
                 if child.decoder.entry is entry:
@@ -32,6 +50,7 @@ class ChoiceDecoder(EntryDecoder):
             possibles = self.children
             failure_expected = True
 
+        was_successful = False
         if len(possibles) == 1:
             best_guess = possibles[0]
         else:
@@ -51,21 +70,33 @@ class ChoiceDecoder(EntryDecoder):
             for child in possibles:
                 try:
                     bits_decoded = 0
-                    for is_starting, child_name, entry, entry_data, value in self._decode_child(child, data.copy(), context.copy()):
-                        if not is_starting:
-                            bits_decoded += len(entry_data)
+                    values = []
+                    #for is_starting, child_name, entry, entry_data, value in self._decode_child(child, data.copy(), context.copy()):
+                    test_context = context.copy()
+                    test_data = data.copy()
+                    items = list(self._decode_child(child, test_data, test_context))
+                    #for is_starting, child_name, entry, entry_data, value in self._decode_child(child, test_data, test_context):
+                    #    if not is_starting:
+                    #        bits_decoded += len(entry_data)
+                    #    values.append((is_starting, child_name, entry, entry_data, value))
 
                     # We successfully decoded the entry!
-                    best_guess = child
+                    #best_guess = child
+                    context.update(test_context)
+                    for item in items:
+                        if not item[0]:
+                            data.pop(len(item[3]))
+                        yield item
+                    was_successful = True
                     break
                 except bdec.DecodeError:
                     if best_guess is None or bits_decoded > best_guess_bits:
                         best_guess = child
                         best_guess_bits = bits_decoded
-
         # Decode the best option.
-        for is_starting, child_name, entry, data, value in self._decode_child(best_guess, data, context):
-            yield is_starting, child_name, entry, data, value
+        if not was_successful:
+            for is_starting, child_name, entry, data, value in self._decode_child(best_guess, data, context):
+                yield is_starting, child_name, entry, data, value
 
         assert not failure_expected
         yield (False, name, self.entry, dt.Data(), None)

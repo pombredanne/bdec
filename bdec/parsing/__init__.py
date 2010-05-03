@@ -4,7 +4,7 @@ from string import ascii_letters as alphas, digits as nums, hexdigits as hexnums
 
 from bdec import DecodeError
 from bdec.choice import Choice
-from bdec.constraints import Equals, NotEquals
+from bdec.constraints import Equals, NotEquals, Minimum, Maximum
 from bdec.data import Data
 from bdec.entry import is_hidden
 from bdec.expression import LengthResult, ValueResult
@@ -40,6 +40,11 @@ class ParseException(DecodeError):
                 str(self.error), self._text.splitlines()[self.lineno-1],
                 ' ' * self.col + '^')
 
+class _Tokens(list):
+    def asList(self):
+        return list(self)
+
+total_successful = 0
 
 class ParserElement:
     def __init__(self):
@@ -51,6 +56,7 @@ class ParserElement:
         self._parser = None
         self._decoder = None
         self._ignore = None
+        self._name = None
 
     def _is_important(self):
         return self._actions or self._internal_actions or self._ignore
@@ -80,6 +86,8 @@ class ParserElement:
         self._am_resolving = True
         self._references = []
         self._decoder = self._createEntry(separator)
+        if self._name is not None:
+            self._decoder.name = self._name
         for reference in self._references:
             reference.resolve(self._decoder)
 
@@ -111,11 +119,13 @@ class ParserElement:
             text = text.encode('ascii')
 
         stack = []
-        tokens = []
+        tokens = _Tokens()
+        global total_successful
         for is_starting, name, entry, data, value in self._decode(text, '<string>'):
             if is_starting:
                 stack.append(tokens)
-                tokens = []
+                total_successful += 1
+                tokens = _Tokens()
             else:
                 if name and not is_hidden(name) and value is not None:
                     tokens.append(value)
@@ -126,6 +136,7 @@ class ParserElement:
                     actions = []
 
                 for action in actions:
+                    hack = tokens
                     tokens = action(tokens)
                     if not isinstance(tokens, list):
                         tokens = [tokens]
@@ -138,10 +149,26 @@ class ParserElement:
 
     def _decode(self, text, filename):
         if self._parser is None:
-            whitespace = ZeroOrMore(Literal(' ') | '\n')('whitespace')
+            whitespace = (Literal(' ') | '\n')('whitespace')
             if self._ignore is not None:
                 whitespace = whitespace | self._ignore
-            whitespace = Suppress(whitespace)
+
+                # HACK HACK
+                #common = []
+                #found = set()
+                #ws = whitespace.createDecoder(None)
+                #def recurse(entry):
+                #    if entry in found:
+                #        common.append(entry)
+                #        return
+                #    found.add(entry)
+                #    for child in entry.children:
+                #        recurse(child.entry)
+                #recurse(ws)
+                #from bdec.spec.xmlspec import dumps
+                #print dumps(ws, common)
+                #print 'done!'
+            whitespace = Suppress(ZeroOrMore(whitespace))
 
             # Whitespace is decoded at the end of the Literal (and Word) entries,
             # so we have to decode any leading whitespace. The alternative,
@@ -149,6 +176,21 @@ class ParserElement:
             # prevent the Chooser from being able to guess the type.
             self._parser = Sequence(None, [whitespace.createDecoder(None),
                 self.createDecoder(whitespace)])
+
+            #found = set()
+            #common = []
+            #def recurse(entry):
+            #    if entry in found:
+            #        common.append(entry)
+            #        return
+            #    found.add(entry)
+            #    for child in entry.children:
+            #        recurse(child.entry)
+            #recurse(self._parser)
+            #print 'parser is:'
+            #from bdec.spec.xmlspec import dumps
+            #print dumps(self._parser, common)
+            #print 'done!'
 
         offset = 0
         try:
@@ -176,6 +218,19 @@ class ParserElement:
         if not isinstance(other, ParserElement):
             other = Literal(other)
         return MatchFirst([other, self])
+    
+    def __invert__(self):
+        return NotAny(self)
+
+    def __call__(self, name):
+        return self.setName(name)
+    
+    def streamline(self):
+        return self
+
+    def setName(self, name):
+        self._name = name
+        return self
 
 
 class ZeroOrMore(ParserElement):
@@ -213,8 +268,14 @@ class Literal(ParserElement):
         return '"%s"' % repr(self.text)[1:-1]
 
 
-def Word(chars):
-    return Combine(OneOrMore(MatchFirst([Literal(c) for c in chars])))
+def Word(init_chars, body_chars=None):
+    init = MatchFirst([Literal(c) for c in init_chars])
+    if body_chars:
+        body = MatchFirst([Literal(c) for c in body_chars])
+        result = init + ZeroOrMore(body)
+    else:
+        result = OneOrMore(init)
+    return Combine(result)('word')
 
 
 def _check_literals(exprs):
@@ -282,7 +343,7 @@ Or = MatchFirst
 class StringEnd(ParserElement):
     def _createEntry(self, separator):
         data = Choice('data:', [Field(None, length=8), Sequence(None, [])])
-        length_check = Sequence(None, [], value=LengthResult('data:'), constraints=[Equals(0)])
+        length_check = Sequence('End of string', [], value=LengthResult('data:'), constraints=[Equals(0)])
         return Sequence(None, [data, length_check])
 
 
@@ -295,16 +356,48 @@ class CharsNotIn(ParserElement):
     def __init__(self, notChars):
         ParserElement.__init__(self)
         self.notChars = notChars
+    
+    def _char_ranges(self):
+        """Return a list of [a..z] lists."""
+        remaining = list(ord(c) for c in self.notChars)
+        remaining.sort()
+        current = []
+        while remaining:
+            char = remaining.pop(0)
+            if not current or char == current[-1] + 1:
+                current.append(char)
+            else:
+                yield current
+                current = [char]
+        if current:
+            yield current
 
     def _createEntry(self, separator):
         checks = []
-        for c in self.notChars:
-            checks.append(Sequence(None, [], value=ValueResult('char not in'),
-                    constraints=[NotEquals(ord(c))]))
+        for range in self._char_ranges():
+            min = range[0]
+            max = range[-1]
+            if len(range) == 1:
+                # There is a single character; use a 'not equals'.
+                checks.append(Sequence('not %s:' % repr(chr(min))[1:-1], [],
+                    value=ValueResult('char not in'),
+                    constraints=[NotEquals(min)]))
+            else:
+                # There are multiple characters; use two ranges.
+                checks.append(Choice(None, [
+                    Sequence('less than %s:' % repr(chr(min))[1:-1], [],
+                        value=ValueResult('char not in'),
+                        constraints=[Maximum(min - 1)]),
+                    Sequence('greater than %s:' % repr(chr(max))[1:-1], [],
+                        value=ValueResult('char not in'),
+                        constraints=[Minimum(max + 1)]),
+                    ]))
         good_char = Sequence('good char', [Field('char not in', length=8, format=Field.INTEGER)] + checks)
         end = Sequence(None, [])
         char = Choice('test char', [good_char, end])
         entry = SequenceOf('chars not in', char, end_entries=[end])
+        #from bdec.spec.xmlspec import dumps
+        #print dumps(entry)
 
         def joinCharacters(toks):
             if toks:
@@ -331,16 +424,45 @@ def Suppress(expr):
 class Forward(ParserElement):
     def __init__(self):
         ParserElement.__init__(self)
-        self.element = None
+        self.expr = None
 
     def __lshift__(self, expr):
         if not isinstance(expr, ParserElement):
             expr = Literal(expr)
-        self.element = expr
+        self.expr = expr
 
     def _createEntry(self, separator):
-        assert self.element is not None
-        return self.element.createDecoder(separator)
+        assert self.expr is not None
+        return self.expr.createDecoder(separator)
+
+class SkipTo(ParserElement):
+    def __init__(self, expr):
+        ParserElement.__init__(self)
+
+        if not isinstance(expr, ParserElement):
+            expr = Literal(expr)
+        self.expr = expr
+
+    def _createEntry(self, separator):
+        end = self.expr.createDecoder(separator)
+        return SequenceOf('skip to', Choice(end, Field('skipped', 8)), end_entries=[end])
+
+
+class NotAny(ParserElement):
+    def __init__(self, expr):
+        ParserElement.__init__(self)
+
+        if not isinstance(expr, ParserElement):
+            expr = Literal(expr)
+        self.expr = expr
+
+    def _createEntry(self, separator):
+        # This entry should _not_ decode if self.expr is present
+        entry = self.expr.createDecoder(separator)
+        null = Sequence('null', [])
+        is_present = Choice('is present', [entry, null])
+        check = Sequence('check', [], value=LengthResult('is present'), constraints=[Equals(0)])
+        return Sequence('not any', [is_present, check])
 
 
 class Combine(ParserElement):
@@ -407,4 +529,15 @@ def Group(expr):
 
 def CaselessKeyword(text):
     return Combine(And(list(Or([c.lower(), c.upper()]) for c in text)))
+
+def oneOf(exprs):
+    return Combine(Or(exprs))
+
+empty = And([])
+
+def lineno():
+    return 0
+
+def delimitedList(expr, delim=','):
+    return expr + ZeroOrMore(delim + expr)
 

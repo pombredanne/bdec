@@ -26,7 +26,8 @@ import bdec.sequence as seq
 from bdec.spec import LoadError, xmlspec
 from bdec.spec.ebnf import parse
 import os.path
-from pyparsing import Word, nums, alphanums, StringEnd, \
+#from pyparsing import Word, nums, alphanums, StringEnd, \
+from bdec.parsing import Word, nums, alphanums, StringEnd, \
     ParseException, Optional, Combine, oneOf, alphas,\
     QuotedString, empty, lineno, SkipTo
 

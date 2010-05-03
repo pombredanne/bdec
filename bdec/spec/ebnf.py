@@ -6,7 +6,8 @@
 # http://www.cl.cam.ac.uk/~mgk25/iso-ebnf.html
 
 
-from pyparsing import *
+#from pyparsing import *
+from bdec.parsing import *
 from bdec.spec import LoadError
 
 class EbnfError(LoadError):
@@ -38,14 +39,14 @@ syntax
 
 integer = Word(nums)
 meta_identifier = Word(alphas, alphanums + '_')
-terminal_string = Suppress("'") + CharsNotIn("'") + Suppress("'") ^ \
+terminal_string = Suppress("'") + CharsNotIn("'") + Suppress("'") | \
                   Suppress('"') + CharsNotIn('"') + Suppress('"')
 definitions_list = Forward()
 optional_sequence = Suppress('[') + definitions_list + Suppress(']')
 repeated_sequence = Suppress('{') + definitions_list + Suppress('}')
 grouped_sequence = Suppress('(') + definitions_list + Suppress(')')
-syntactic_primary = optional_sequence ^ repeated_sequence ^ \
-                    grouped_sequence ^ meta_identifier ^ terminal_string
+syntactic_primary = optional_sequence | repeated_sequence | \
+                    grouped_sequence | meta_identifier | terminal_string
 syntactic_factor = Optional(integer + Suppress('*')) + syntactic_primary
 syntactic_term = syntactic_factor + Optional(Suppress('-') + syntactic_factor)
 single_definition = delimitedList(syntactic_term, ',')

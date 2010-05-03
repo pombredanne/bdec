@@ -16,6 +16,7 @@ _decoders = {
         Choice : ChoiceDecoder,
         }
 
+
 class Decoder:
     """ Decode instance data based on a specification. """
     def __init__(self, entry):
@@ -34,7 +35,18 @@ class Decoder:
         self._decoder = self._get_decoder(entry, params)
 
     def decode(self, data, context, name):
-        return self._decoder.decode(data, context, name)
+        import time
+        #print 'running internal decode', time.clock()
+        offset = 0
+        for item in  self._decoder.decode(data, context, name):
+            #print ' ' * offset,
+            #if item[0]:
+                #print item
+                #offset += 2
+            #else:
+                #offset -= 2
+                #print item
+            yield item
 
     def _get_decoder(self, entry, lookup):
         try:

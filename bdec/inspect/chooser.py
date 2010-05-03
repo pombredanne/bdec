@@ -200,6 +200,7 @@ def _differentiate(entries):
         # section.
         if length == _UnknownData.UNKNOWN_LENGTH:
             # We cannot differentiate any more...
+            #print 'cannot differentiate any more: unknown length'
             break
 
         # Get the values of all of the options for this data section
@@ -217,6 +218,7 @@ def _differentiate(entries):
             elif data:
                 lookup.setdefault(int(data), []).append(entry)
 
+        #print 'got a new set of options', lookup
         if have_new_success or _can_differentiate(lookup, undistinguished + successful + possible):
             # We also should notify if we have a new item in the successful (or possible) list...
             yield offset, length, lookup, undistinguished, successful, possible
@@ -239,10 +241,13 @@ def _differentiate(entries):
                     successful.append(entry)
 
         offset += length
+        #print '%i more options will be: %s' % (len(options),  options)
 
     # Unable to differentiate any more; give one more result with all
     # of the current possible option.
+    #print 'no more differentiation'
     yield offset, 0, {}, [entry for entry, option in options], successful, possible
+
 
 class _Cache:
     """ Class to cache differentiated entries. """
@@ -255,6 +260,7 @@ class _Cache:
             yield item
 
         for offset, length, lookup, undistinguished, successful, possible in self._items:
+            #print 'detected:', offset, lookup
             item = (offset, length, lookup.copy(), undistinguished[:], successful[:], possible[:])
             self._cache.append(item)
             yield item
@@ -270,7 +276,9 @@ class Chooser:
         current_offset = 0
         copy = data.copy()
         for offset, length, lookup, undistinguished, successful, possible in self._cache:
+            #print offset, lookup
             if len(options) <= 1:
+                #print 'only one option left'
                 break
 
             # Remove data from before the current offset, as we cannot use it
@@ -281,6 +289,7 @@ class Chooser:
             except dt.NotEnoughDataError:
                 # We don't have enough data left for this option; reduce
                 # the possibles to those that have finished decoding.
+                #print 'got to end of data'
                 options = [option for option in options if option in set(successful + possible)]
                 break
             current_offset = offset
@@ -291,6 +300,7 @@ class Chooser:
                 if option in successful:
                     # We found a successful item; no options after this can 
                     # succeed (as they are a lower priority).
+                    #print 'found successful', option
                     del options[i+1:]
                     break
 
@@ -302,6 +312,7 @@ class Chooser:
                     # We don't have enough data left for this option; reduce
                     # the possibles to those that have finished decoding.
                     options = [option for option in options if option in set(successful + possible)]
+                    #print 'ran out of data; showing finished options'
                     break
 
                 if lookup:
@@ -312,6 +323,9 @@ class Chooser:
                         filter += lookup[value]
                     except KeyError:
                         pass
+                    #print 'found lookup'
                     options = [option for option in options if option in filter]
 
+        #print 'remaining options:', options
         return options
+

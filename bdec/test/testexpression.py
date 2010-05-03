@@ -23,7 +23,11 @@ import bdec.sequence as sequence
 import unittest
 
 def eval(text):
-    return exp.compile(text).evaluate({})
+    import time
+    print 'compile:', time.clock()
+    e = exp.compile(text)
+    print 'decode:', time.clock()
+    return e.evaluate({})
 
 def bool(text,context={}):
     try:
@@ -53,6 +57,10 @@ class TestExpression(unittest.TestCase):
 
     def test_compound(self):
         self.assertEqual(12, eval('6 + 7 - 1'))
+
+        from bdec.decode.entry import total
+        from bdec.parsing import total_successful
+        print 'total successful: %i, total attempted: %i' % (total_successful, total)
 
     def test_brackets(self):
         self.assertEqual(6, eval('(6)'))

@@ -201,7 +201,8 @@ class Field(bdec.entry.Entry):
             # because the named item may be in the output, but not necessarily
             # the value (eg: in the xml representation, it is clearer to not
             # display the expected value).
-            value = self.decode_value(expected)
+            #value = self.decode_value(expected)
+            value = expected
         return value
 
     def _encode(self, query, value):

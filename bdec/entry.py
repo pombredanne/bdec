@@ -165,6 +165,7 @@ class Entry(object):
                 # For convenience in the tests, we allow the children to be
                 # assigned an array of Entry instances.
                 from bdec.spec.references import ReferencedEntry
+                assert isinstance(child, Entry) or isinstance(child, ReferencedEntry)
                 if isinstance(child, ReferencedEntry):
                     child.set_parent(self)
 

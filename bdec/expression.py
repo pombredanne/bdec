@@ -16,6 +16,9 @@
 #   License along with this library; if not, see
 #   <http://www.gnu.org/licenses/>.
 
+#from pyparsing import StringEnd, ParseException
+#from pyparsing import Word, alphanums, nums, Forward, ZeroOrMore, Combine, CaselessLiteral, srange, StringEnd, ParseException
+
 import bdec.data as dt
 import operator
 
@@ -168,7 +171,7 @@ def _collapse(s,l,t):
     return result
 
 def _int_expression():
-    from pyparsing import Word, alphanums, nums, Forward, ZeroOrMore, Combine, CaselessLiteral, srange
+    from bdec.parsing import Word, alphanums, nums, Forward, ZeroOrMore, Combine, CaselessLiteral, srange, StringEnd, ParseException
     entry_name = Word(alphanums + ' _+:.-')
     integer = Word(nums).addParseAction(lambda s,l,t: [Constant(int(t[0]))])
     hex = Combine(CaselessLiteral("0x") + Word(srange("[0-9a-fA-F]"))).addParseAction(lambda s,l,t:[Constant(int(t[0][2:], 16))])
@@ -186,6 +189,7 @@ def _int_expression():
     expression << entry
     return expression
 
+_complete = None
 def parse(text):
     """
     Compile a length expression into an integer convertible object.
@@ -194,10 +198,18 @@ def parse(text):
         convertible object.
     return -- An Expression instance
     """
-    from pyparsing import StringEnd, ParseException
-    complete = _int_expression() + StringEnd()
+    from bdec.parsing import Word, alphanums, nums, Forward, ZeroOrMore, Combine, CaselessLiteral, srange, StringEnd, ParseException
+    global _complete
+    import time
+    if _complete is None:
+        #print 'creating parser', time.clock()
+        _complete = _int_expression() + StringEnd()
+
     try:
-        return complete.parseString(text)[0]
+        #print 'parsing', time.clock()
+        #for i in range(100):
+        #    _complete.parseString(text)[0]
+        return _complete.parseString(text)[0]
     except ParseException, ex:
         raise ExpressionError(ex)
 # Legacy name for parse function
@@ -212,8 +224,7 @@ def parse_conditional_inverse(text):
         is _false_ (eg: the returned entry can be used as a 'not present' 
         option in a choice).
     """
-    from pyparsing import StringEnd, ParseException
-    from pyparsing import Forward, OneOrMore, Literal, ZeroOrMore
+    from bdec.parsing import Word, alphanums, nums, Forward, ZeroOrMore, Combine, CaselessLiteral, srange, StringEnd, ParseException
     from bdec.constraints import Equals, Minimum, Maximum, NotEquals
     import bdec.choice as chc
     import bdec.sequence as seq

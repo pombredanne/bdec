@@ -25,7 +25,7 @@ from bdec.inspect.range import Range
 class ConstraintError(DecodeError):
     def __init__(self, entry, actual, comparison, limit):
         DecodeError.__init__(self, entry)
-        self._error = '%s %s %s' % (str(actual), comparison, str(limit))
+        self._error = 'expected %s %s actual %s' % (repr(limit), comparison, repr(actual))
 
     def __str__(self):
         return '%s constaint failed; %s' % (self.entry, self._error)
